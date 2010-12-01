@@ -10,25 +10,59 @@
          (setf (symbol-function ',name) ,oldf)
          ,result))))
 
+;; (with-arg-stub (f (1 2) 3) (f)) =>
+;;   (f (&rest args) (if-tree-equal expected args) 3 (funcall #'old-f))
+
+(defmacro with-arg-stub (fdef &rest body)
+  (let ((name (car fdef))
+        (expected-args (cadr fdef))
+        (rbody (cddr fdef)))
+    `(let ((oldf (symbol-function ',name)))
+       (setf (symbol-function ',name)
+             (lambda (&rest actual-args)
+               (if (equal ',expected-args actual-args)
+                   ,@rbody
+               (apply oldf actual-args))))
+       (let ((result (progn ,@body)))
+         (setf (symbol-function ',name) oldf)
+         result))))
+
+
 ;; Specifications
 
 (defun f () 5)
-(defun make-double (x) (* 2 x))
 (defun f-plus-one () (1+ (f)))
-(defun funcall-f-plus-one () (1+ (f)))
-(defun double-plus-one (x) (1+ (make-double x)))
+(defun funcall-f () (funcall #'f))
+(defun twice (x) (* 2 x))
 
-(specification-for with-stub
-                   (it "replaces parameter less function definition"
-                       (with-stub (f () 2)
-                                  (equal 3 (f-plus-one))))
-                   (it "replaces function definition with parameter"
-                       (with-stub (make-double (x) 4)
-                                  (equal 5 (double-plus-one 2))))
-                   (it "replaces function value"
-                       (with-stub (f () 2)
-                                  (let (function-to-call #'f)
-                                    (equal 3 (funcall function-to-call))))))
+(specification-for 
+ with-stub
+ (it "replaces parameter less function definition called from body"
+     (with-stub (f () 2)
+       (equal 2 (f))))
+ (it "replaces parameter less function definition called from other function"
+     (with-stub (f () 2)
+       (equal 3 (f-plus-one))))
+ (it "replaces parameter less function definition called with funcall from body"
+     (with-stub (f () 2)
+       (equal 2 (funcall #'f))))
+ (it "replaces parameter less function definition called with funcall from other function"
+     (with-stub (f () 2)
+       (equal 2 (funcall-f))))
+ (it "replaces function definition with parameter called from body"
+     (with-stub (twice (x) (declare (ignore x)) 4)
+       (equal 5 (1+ (twice 2)))))
+ (it "replaces function definition if parameters match"
+     (with-arg-stub (twice (2) 1)
+       (equal 1 (twice 2))))
+ (it "does not replace function definition if parameters do not match"
+     (with-arg-stub (twice (2) 1)
+       (equal 6 (twice 3))))
+ )
+;;                   (it "replaces function
+;;                       (with-stub (f () 2)
+;;                                  (let (function-to-call #'f)
+;;                                    (equal 3 (funcall function-to-call))))))
                                   
 
 
